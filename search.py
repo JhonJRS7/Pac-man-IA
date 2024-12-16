@@ -317,40 +317,47 @@ def aStarSearch(problem: SearchProblem, heuristic=nullHeuristic) -> List[Directi
 
     return actions
 
-def geneticAlgorithm(problem: SearchProblem, population_size=50, generations=100, mutation_rate=0.1) -> List[Directions]:
+def geneticAlgorithm(problem: SearchProblem, population_size=100, generations=1, mutation_rate=0.2) -> List[Directions]:
     def get_legal_actions(state):
         return [action for _, action, _ in problem.getSuccessors(state)]
 
     def randomSolution():
         state = problem.getStartState()
         solution = []
-        for _ in range(10000):
+        explored_states = []
+        explored_states.append(state)
+
+        for _ in range(150):
             legal_actions = get_legal_actions(state)
             if not legal_actions:
                 break
             action = random.choice(legal_actions)
-            solution.append(action)
-            state = [s for s, a, _ in problem.getSuccessors(state) if a == action][0]
+            next_state = [s for s, a, _ in problem.getSuccessors(state) if a == action][0]
+            if next_state not in explored_states:
+                solution.append(action)
+                state = next_state
+                explored_states.append(next_state)
         return solution
 
     def fitness(solution):
         current_state = problem.getStartState()
-        score = 0
+        cost = 0
+
         for action in solution:
-            if problem.isGoalState(current_state):
-                score += 1000  # Reward for reaching the goal
-                break
             successors = problem.getSuccessors(current_state)
-            legal_actions = [a for _, a, _ in successors]
-            if action in legal_actions:
-                current_state = [s for s, a, _ in successors if a == action][0]
-                score += 1
-            else:
-                break
-        return score
+            valid_actions = {a: (s, c) for s, a, c in successors}
+            if action not in valid_actions:
+                return 1e100
+            current_state, step_cost = valid_actions[action]
+            cost += step_cost
+
+        if not problem.isGoalState(current_state):
+            return 1e100
+
+        return cost
 
     def crossover(parent1, parent2):
-        crossover_point = random.randint(0, min(len(parent1), len(parent2)) - 1)
+        crossover_point = random.randint(1, min(len(parent1), len(parent2)) - 1)
         return parent1[:crossover_point] + parent2[crossover_point:]
 
     def mutate(solution):
@@ -360,28 +367,26 @@ def geneticAlgorithm(problem: SearchProblem, population_size=50, generations=100
         mutation_point = random.randint(0, len(solution) - 1)
         state = problem.getStartState()
 
-        # Aplicar as ações até o ponto de mutação
         for action in solution[:mutation_point]:
-            legal_actions = get_legal_actions(state)
-            if action not in legal_actions: # Se a ação se tornou ilegal pare
+            successors = problem.getSuccessors(state)
+            valid_actions = {a: s for s, a, _ in successors}
+            if action not in valid_actions:
                 return solution
-            state = [s for s, a, _ in problem.getSuccessors(state) if a == action][0]
+            state = valid_actions[action]
 
-        # Escolher uma nova ação legal para o ponto de mutação
-        legal_actions = get_legal_actions(state)
-        if legal_actions:
-            solution[mutation_point] = random.choice(legal_actions)
+        successors = problem.getSuccessors(state)
+        if successors:
+            solution[mutation_point] = random.choice(successors)[1]
         return solution
 
     population = [randomSolution() for _ in range(population_size)]
 
     for _ in range(generations):
-        fitness_scores = [(fitness(individual), individual) for individual in population]
-        fitness_scores.sort(reverse=True, key=lambda x: x[0])
+        population.sort(key=lambda x: fitness(x))
 
-        selected = [individual for _, individual in fitness_scores[:population_size // 2]]
-
+        selected = population[:population_size // 2]
         next_generation = []
+
         while len(next_generation) < population_size:
             parent1, parent2 = random.sample(selected, 2)
             child = crossover(parent1, parent2)
@@ -389,9 +394,9 @@ def geneticAlgorithm(problem: SearchProblem, population_size=50, generations=100
                 child = mutate(child)
             next_generation.append(child)
 
-        population = next_generation
+        population = selected + next_generation
 
-    best_solution = max(population, key=lambda ind: fitness(ind))
+    best_solution = min(population, key=lambda ind: fitness(ind))
     return best_solution
 
 # Abbreviations
